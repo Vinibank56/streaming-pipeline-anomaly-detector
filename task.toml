@@ -1,0 +1,41 @@
+schema_version = "1.0"
+version = "1.0"
+
+artifacts = ["/app"]
+
+[task]
+name = "streaming-pipeline-anomaly-detector"
+description = "Repair an online EMA-based streaming anomaly detector with warmup, consecutive-hit debouncing, per-stream state, and concept-drift responsiveness."
+
+[metadata]
+name = "streaming-pipeline-anomaly-detector"
+author_name = "Vincent Onuegbunam"
+author_email = "onuegbunamvincent@gmail.com"
+author_organization = ""
+difficulty_explanation = "The seed detector collapses stream state, uses cumulative mean instead of EMA (ignoring ema_alpha / concept drift), computes z-scores with mean magnitude as denominator, skips warmup, and alerts on a single threshold breach. Agents must implement five interacting ML-ops rules while using the provided ema.py helpers. Hidden tests verify zero false positives on benign noisy sequences, drift adaptation with different alphas, unpublished stream IDs against a sealed spec reference, and behavioral properties (consecutive reset, min_std floor, per-stream isolation)."
+solution_explanation = "solution/solve.sh installs reference streaming.py implementing per-stream EMA baselines via ema.py, pre-update z-scoring, warmup gating, consecutive_required debouncing, and correct reset semantics. Runs full visible, hidden, and behavioral pytest suites."
+verification_explanation = "Three-layer verifier: test_visible.py (5 self-check cases), test_hidden.py (benign FP rate, drift, stream isolation, spec-reference parametrized streams), test_behavior_hidden.py (consecutive reset, min_std, alpha sensitivity, config matrix). Sealed spec_reference.py and invariants.py enforce behavior beyond visible literals. Binary scoring."
+domain = "ml"
+field = "ml-engineering"
+subfield = "anomaly-detection"
+tags = ["ml-engineering", "anomaly-detection", "streaming", "ema", "concept-drift", "python"]
+expert_time_estimate_hours = 3.0
+relevant_experience = "ML platform and observability engineering experience building online statistical detectors for streaming metrics with drift and false-positive control."
+conflicts_of_interest = "None"
+
+[verifier]
+timeout_sec = 600.0
+environment_mode = "shared"
+network_mode = "none"
+
+[agent]
+timeout_sec = 7200.0
+network_mode = "none"
+
+[environment]
+build_timeout_sec = 600.0
+cpus = 2
+memory_mb = 2048
+storage_mb = 4096
+gpus = 0
+network_mode = "none"

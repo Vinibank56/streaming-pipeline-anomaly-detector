@@ -1,0 +1,35 @@
+{
+  "title": "Repair Streaming Pipeline Anomaly Detector",
+  "workingSlug": "streaming-pipeline-anomaly-detector",
+  "collectionFamily": "ML engineering",
+  "taskFamily": "debugging",
+  "verifierFamily": "programmatic",
+  "author": {
+    "name": "Vincent Onuegbunam",
+    "email": "onuegbunamvincent@gmail.com",
+    "coAuthor": null
+  },
+  "objective": "Fix the broken StreamingAnomalyDetector in /app/detector/streaming.py. The detector must maintain per-stream EMA baselines, compute z-scores with effective_std before updating the baseline, suppress alerts during warmup, require consecutive threshold breaches to reduce false positives, and honor ema_alpha for concept-drift responsiveness. Only streaming.py may be edited; config.py, types.py, and ema.py are correct. Done means update() and reset() satisfy the contract and pass visible, hidden, and behavioral verifier suites including benign-sequence false-positive checks.",
+  "motivation": "Real-time pipeline observability depends on online anomaly detectors that adapt to concept drift without flooding on-call. Broken detectors either miss incidents or cry wolf on every spike. This task mirrors ML platform work tuning statistical streaming detectors for production metrics pipelines.",
+  "difficultyExplanation": "Five independent ML-ops rules interact: per-stream state, EMA vs cumulative mean, pre-update z-scoring with min_std, warmup gating, and consecutive_required debouncing. The seed passes smoke tests but fails benign-sequence false-positive checks, drift scenarios, and sealed spec-reference comparisons with unpublished stream IDs. Agents cannot hard-code outputs because hidden tests include parametrized configs and 40-point noisy stable sequences graded for zero false alarms.",
+  "expertTimeEstimateHours": 3.0,
+  "environmentSummary": "Python 3.11 (bookworm) container with /app as working tree. Pre-installed pytest, bash, curl. Package /app/detector/ contains broken streaming.py plus correct EMA helpers, config dataclasses, and metric types. No GPU, no network, no batch training — pure online statistical detection. Verifier under /tests/ dynamically imports the agent's detector module.",
+  "resourceEstimate": {
+    "cpuMillis": 2000,
+    "memoryMb": 2048,
+    "storageMb": 4096,
+    "gpuCount": 0,
+    "agentTimeoutSec": 7200,
+    "verifierTimeoutSec": 600
+  },
+  "networkRequirements": {
+    "mode": "none",
+    "justification": "Fully offline ML-engineering task; all dependencies baked into Docker image at build time.",
+    "allowlistHosts": []
+  },
+  "oracleStrategy": "solution/solve.sh installs reference streaming.py with per-stream _StreamState, ema_update/z_score/effective_std from ema.py, pre-update scoring, warmup and consecutive gating, and stream-scoped reset. Runs full visible, hidden, and behavioral pytest suites before grading.",
+  "verificationStrategy": "Three-layer verifier: (1) test_visible.py — 5 documented self-check cases (warmup, single/double spike, stable baseline); (2) test_hidden.py — zero false positives on 40-point benign noisy sequence, concept-drift adaptation, stream isolation, reset, EMA-vs-mean check, parametrized wh_unseen_* streams vs sealed spec_reference.py; (3) test_behavior_hidden.py — consecutive reset, min_std floor, alpha sensitivity, config matrix. invariants.py enforces never-alert-before-warmup and anomaly/consecutive consistency. Binary scoring.",
+  "binarySuccessCondition": "All pytest cases in test_visible.py, test_hidden.py, and test_behavior_hidden.py pass when importing StreamingAnomalyDetector from /app/detector/streaming.py.",
+  "partialScoreStrategy": "Binary scoring only — no partial credit. Prevents passing visible spike literals while failing benign false-positive and drift requirements.",
+  "anticipatedExploits": "1. Hard-coded spike responses — Prevention: parametrized wh_unseen_* and wh_matrix_* streams vs sealed spec_reference.py. 2. Mock detector returning is_anomaly=True on large z — Prevention: consecutive_required and warmup gating tests. 3. Global state across streams — Prevention: stream isolation test with 1000 vs 10 initialization. 4. Cumulative mean instead of EMA — Prevention: post-drift baseline mean bounds and spec reference. 5. Wrong z denominator (value/mean) — Prevention: stable-sequence std behavior and min_std floor test. 6. Ignoring ema_alpha — Prevention: slow vs fast alpha false-positive comparison on gradual drift. 7. Single-point alerting — Prevention: single spike must not anomaly when consecutive_required=2. 8. Benign noise gaming — Prevention: 40-point Gaussian noise sequence must produce zero alerts."
+}
