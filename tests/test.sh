@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-set +e
+# Verifier entrypoint: grade agent/oracle output; always exit 0.
+set +euo pipefail
 
 mkdir -p /logs/verifier
 
-python3 --version >/dev/null
+export PYTHONPATH="/app${PYTHONPATH:+:$PYTHONPATH}"
 
 python3 -m pytest \
   /tests/test_visible.py \
