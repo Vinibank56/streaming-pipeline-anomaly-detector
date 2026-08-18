@@ -20,6 +20,27 @@ The detector maintains an **EMA baseline** per `stream_id`. Concept drift is han
 3. **Correct scoring** — z-scores use standard deviation with a numeric floor, not mean magnitude.
 4. **Stream isolation** — each `stream_id` has independent state.
 
+## Statistical model (ML requirements)
+
+Implement **online statistical anomaly detection** using:
+
+| Component | Specification |
+|-----------|---------------|
+| **Baseline model** | Exponential moving average (EMA) of mean and variance via `ema.ema_update()` |
+| **Anomaly score** | z-score = `(value - baseline_mean) / effective_std` computed **before** updating the baseline |
+| **Concept drift** | Controlled by `DetectorConfig.ema_alpha` — higher α adapts faster to regime shifts |
+| **False-positive control** | Require `consecutive_required` threshold breaches; suppress alerts during `warmup_samples` |
+| **Dispersion floor** | Use `ema.effective_std(var, min_std)` — never divide by zero or use mean magnitude as std |
+
+This is a statistical process-control detector (not deep learning), representative of production ML-ops pipelines.
+
+### Evaluation metrics (graded on hidden suite)
+
+- **False-positive rate**: 0 alerts on 50-point Gaussian noise around a stable mean (default config)
+- **Detection sensitivity**: Must alert on sustained post-warmup spike sequences (unpublished configs)
+- **Drift responsiveness**: Different `ema_alpha` values must produce measurably different baselines after regime shift
+- **Statistical correctness**: z-scores must match `ema.z_score()` on the pre-update baseline
+
 ## Requirements
 
 Implement `StreamingAnomalyDetector` in `/app/detector/streaming.py`:
@@ -74,9 +95,11 @@ class StreamingAnomalyDetector:
 
 ## Success metrics
 
-1. **Functional** — matches the contract for all inputs.
+1. **Statistical** — EMA baseline, pre-update z-scoring, and drift via `ema_alpha` implemented correctly.
 2. **Visible suite** — `pytest /tests/test_visible.py` passes (self-check scenarios below).
-3. **Hidden suite** — full verifier passes unpublished streams, benign-sequence false-positive checks, drift behavior, and spec-reference comparisons.
+3. **Hidden suite** — sealed tests verify FP rate, detection sensitivity, drift behavior, and full equality against the statistical contract on unpublished streams (you cannot inspect these tests).
+
+> **Note:** Only `test_visible.py` scenarios are documented here. Hidden modules (`test_hidden.py`, `test_behavior_hidden.py`, `test_statistical_hidden.py`) and `spec_reference.py` are sealed from the agent.
 
 ## Self-check examples (visible tests)
 
