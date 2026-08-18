@@ -10,6 +10,7 @@ This document explains how grading works. The agent only reads `instruction.md` 
 | `test_hidden.py` | **Hidden** — sealed under `/tests/` | Edge cases, FP rate, drift, spec-reference |
 | `test_behavior_hidden.py` | **Hidden** | Property tests (consecutive reset, min_std) |
 | `test_statistical_hidden.py` | **Hidden** | ML behavioral tests (detection sensitivity, EMA math) |
+| `test_edge_hidden.py` | **Hidden** | Sparse streams, rapid oscillation, 100-stream isolation |
 | `spec_reference.py` | **Hidden** | Canonical statistical implementation |
 | `invariants.py` | **Hidden** | Objective constraints on every result |
 

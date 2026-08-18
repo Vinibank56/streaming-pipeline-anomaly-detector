@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import math
-
 import pytest
 
 from detector import ema
@@ -52,19 +50,22 @@ def test_z_score_matches_ema_helper_pre_update(detector_cls):
     from detector.types import MetricPoint
 
     cfg = DetectorConfig(0.15, 3.0, 4, 2, 0.1)
-    detector = detector_cls(cfg)
+    agent = detector_cls(cfg)
+    reference = ReferenceStreamingAnomalyDetector(cfg)
     history = [5.0, 5.0, 5.0, 5.0, 7.5]
     for index, value in enumerate(history):
-        detector.update(MetricPoint("wh_stat_z", f"2026-07-01T00:00:{index:02d}Z", value))
+        point = MetricPoint("wh_stat_z", f"2026-07-01T00:00:{index:02d}Z", value)
+        agent.update(point)
+        reference.update(point)
 
     probe = MetricPoint("wh_stat_z", "2026-07-01T00:00:10Z", 9.0)
-    state_before = detector._state("wh_stat_z")  # noqa: SLF001 — sealed test
+    state_before = reference._state("wh_stat_z")  # noqa: SLF001
     expected_z = ema.z_score(
         probe.value,
         state_before.mean,
         ema.effective_std(state_before.var, cfg.min_std),
     )
-    result = detector.update(probe)
+    result = agent.update(probe)
     assert result.z_score == pytest.approx(expected_z, rel=1e-9, abs=1e-9)
 
 
@@ -144,6 +145,73 @@ def test_rule_based_threshold_gaming_would_false_alarm_on_benign(detector_cls):
     random.seed(4242)
     values = [100.0 + random.gauss(0, 0.1) for _ in range(30)]
     results = feed(detector, "wh_stat_ruletrap", values)
-    naive_rule_fps = sum(1 for v, r in zip(values, results) if v > 100.5 and r.is_anomaly)
     assert sum(r.is_anomaly for r in results) == 0
-    assert naive_rule_fps == 0 or math.isfinite(naive_rule_fps)
+
+
+@pytest.mark.parametrize("seed", [101, 202, 303, 404])
+def test_false_positive_rate_zero_across_seeds(detector_cls, seed):
+    """FP rate must remain 0 under multiple benign noise seeds."""
+    import random
+
+    cfg = default_config()
+    detector = detector_cls(cfg)
+    random.seed(seed)
+    values = [25.0 + random.gauss(0, 0.12) for _ in range(40)]
+    results = feed(detector, f"wh_stat_fp_{seed}", values)
+    assert sum(r.is_anomaly for r in results) == 0
+
+
+def test_baseline_variance_increases_with_spread(detector_cls):
+    """Statistical property: wider values produce larger baseline_std after warmup."""
+    from detector.config import DetectorConfig
+
+    cfg = DetectorConfig(0.3, 5.0, 3, 2, 0.1)
+    tight = feed(detector_cls(cfg), "wh_stat_tight", [10.0, 10.1, 9.9, 10.0, 10.2])[-1]
+    wide = feed(detector_cls(cfg), "wh_stat_wide", [10.0, 15.0, 5.0, 14.0, 6.0])[-1]
+    assert wide.baseline_std > tight.baseline_std
+
+
+def test_full_stream_statistical_equality_vs_reference(detector_cls):
+    """Every step must match sealed reference — not just final output."""
+    from detector.config import DetectorConfig
+    from detector.types import MetricPoint
+
+    cfg = DetectorConfig(0.12, 2.8, 5, 2, 0.05)
+    values = [8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 25.0, 25.0, 8.0]
+    agent = detector_cls(cfg)
+    reference = ReferenceStreamingAnomalyDetector(cfg)
+    for index, value in enumerate(values):
+        point = MetricPoint("wh_stat_full", f"2026-10-01T00:00:{index:02d}Z", value)
+        got = agent.update(point)
+        expected = reference.update(point)
+        assert got.is_anomaly == expected.is_anomaly
+        assert got.z_score == pytest.approx(expected.z_score, rel=1e-9, abs=1e-9)
+        assert got.baseline_mean == pytest.approx(expected.baseline_mean, rel=1e-9, abs=1e-9)
+        assert got.baseline_std == pytest.approx(expected.baseline_std, rel=1e-9, abs=1e-9)
+        assert got.consecutive_high == expected.consecutive_high
+        assert got.warmed_up == expected.warmed_up
+
+
+def test_z_score_near_zero_when_value_equals_baseline(detector_cls):
+    """When value matches baseline mean, |z| must be ~0."""
+    cfg = default_config()
+    results = feed(detector_cls(cfg), "wh_stat_equal", [12.0] * 10)
+    assert results[-1].z_score == pytest.approx(0.0, abs=1e-6)
+
+
+def test_concept_drift_fast_alpha_tracks_new_regime_closer(detector_cls):
+    """After shift to 30.0, fast alpha baseline must be closer to 30 than slow."""
+    from detector.config import DetectorConfig
+
+    values = [10.0] * 6 + [30.0] * 8
+    slow = feed(
+        detector_cls(DetectorConfig(0.05, 3.0, 5, 2, 0.1)),
+        "wh_stat_track_slow",
+        values,
+    )[-1]
+    fast = feed(
+        detector_cls(DetectorConfig(0.9, 3.0, 5, 2, 0.1)),
+        "wh_stat_track_fast",
+        values,
+    )[-1]
+    assert abs(fast.baseline_mean - 30.0) < abs(slow.baseline_mean - 30.0)

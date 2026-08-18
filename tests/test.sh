@@ -10,6 +10,7 @@ python3 -m pytest \
   /tests/test_hidden.py \
   /tests/test_behavior_hidden.py \
   /tests/test_statistical_hidden.py \
+  /tests/test_edge_hidden.py \
   -q
 status=$?
 
